@@ -4,3 +4,4 @@ google-generativeai
 google-genai
 python-dotenv
 requests>=2.31.0
+Authlib
