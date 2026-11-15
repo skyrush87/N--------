@@ -1,4 +1,3 @@
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -26,7 +25,7 @@ def _setting(name: str) -> str:
         value = st.secrets.get(name)
     except StreamlitSecretNotFoundError:
         value = None
-    return str(value or os.getenv(name, "")).strip()
+    return str(value or "").strip()
 
 
 def _supabase_config() -> tuple[str, str]:

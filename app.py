@@ -2,13 +2,11 @@ import html
 
 import streamlit as st
 from crewai import Crew, Process
-from dotenv import load_dotenv
 
 from agents import DEPARTMENTS, create_department_agents, create_llm
+from storage import StorageError, load_department_state, save_department_state
 from tasks import create_department_task
 
-
-load_dotenv()
 
 st.set_page_config(
     page_title="멀티 에이전트 타이쿤",
@@ -255,11 +253,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+user_info = st.user
+user_id = str(user_info.get("sub", "")).strip()
+login_state = getattr(user_info, "is_logged_in", None)
+if login_state is None:
+    login_state = bool(user_id)
+
+if not login_state or not user_id:
+    st.session_state.pop("authenticated_user_id", None)
+    st.title("🕹️ 에이전트 타이쿤")
+    st.info("휴대폰·태블릿 등 여러 기기에서 기록을 동기화하려면 Google 로그인이 필요합니다.")
+    st.button("Google 계정으로 로그인", on_click=st.login, use_container_width=True)
+    st.caption("로그인 버튼이 동작하지 않으면 배포 환경의 Streamlit 인증 설정을 확인해 주세요.")
+    st.stop()
+
+st.session_state["authenticated_user_id"] = user_id
+user_id = st.session_state["authenticated_user_id"]
+
 st.sidebar.markdown(
     '<div class="game-panel">🕹️ 타이쿤 컨트롤 타워<br>부서를 골라 대화를 시작하세요!</div>',
     unsafe_allow_html=True,
 )
-st.sidebar.caption("로그인 없이 사용 · 기록은 현재 접속 세션에 저장됩니다.")
+email = user_info.get("email", "")
+if email:
+    st.sidebar.caption(email)
+st.sidebar.button("로그아웃", on_click=st.logout, use_container_width=True)
 selected_department = st.sidebar.radio(
     "부서 선택",
     options=DEPARTMENT_KEYS,
@@ -272,16 +290,34 @@ history_key = f"chat_{selected_department}"
 plan_key = f"plan_{selected_department}"
 approval_key = f"approved_{selected_department}"
 
-if history_key not in st.session_state:
-    st.session_state[history_key] = []
-if plan_key not in st.session_state:
-    st.session_state[plan_key] = ""
-if approval_key not in st.session_state:
-    st.session_state[approval_key] = False
+try:
+    department_state = load_department_state(user_id, selected_department)
+except StorageError as exc:
+    st.error(str(exc))
+    st.stop()
+
+st.session_state[history_key] = department_state.history
+st.session_state[plan_key] = department_state.plan
+st.session_state[approval_key] = department_state.approved
 
 history = st.session_state[history_key]
 if not history and st.session_state[plan_key]:
     history.append({"role": "assistant", "kind": "report", "content": st.session_state[plan_key]})
+
+
+def persist_department_state() -> None:
+    try:
+        save_department_state(
+            user_id,
+            selected_department,
+            history,
+            st.session_state[plan_key],
+            st.session_state[approval_key],
+        )
+    except StorageError as exc:
+        st.error(str(exc))
+        st.stop()
+
 
 st.title("🕹️ 에이전트 타이쿤")
 st.caption("메신저로 업무를 지시하고, 부서장의 보고를 말풍선으로 확인하세요.")
@@ -311,6 +347,7 @@ for message in history:
 if st.session_state[plan_key]:
     if st.button("✅ 승인 및 실행", key=f"approve_{selected_department}"):
         st.session_state[approval_key] = True
+        persist_department_state()
     if st.session_state[approval_key]:
         st.success("승인 상태로 기록했습니다. 외부 서비스에 실제 게시·실행되지는 않습니다.")
 
@@ -337,6 +374,8 @@ if prompt:
         }
         history.append(start_message)
 
+        persist_department_state()
+
         with st.chat_message("assistant", avatar=persona["avatar"]):
             render_bubble("작업을 시작합니다! 열심히 일하는 중... 💦", "npc-bubble typing-bubble")
             try:
@@ -350,6 +389,7 @@ if prompt:
                 }
                 history.append(error_message)
                 render_bubble(error_message["content"], "error-bubble")
+                persist_department_state()
             except Exception as exc:
                 error_message = {
                     "role": "assistant",
@@ -358,6 +398,7 @@ if prompt:
                 }
                 history.append(error_message)
                 render_bubble(error_message["content"], "error-bubble")
+                persist_department_state()
             else:
                 st.session_state[plan_key] = result
                 report_message = {
@@ -366,4 +407,5 @@ if prompt:
                     "content": result,
                 }
                 history.append(report_message)
+                persist_department_state()
                 render_bubble(result, "npc-bubble")

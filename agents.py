@@ -1,6 +1,6 @@
-import os
-
+import streamlit as st
 from crewai import Agent, LLM
+from streamlit.errors import StreamlitSecretNotFoundError
 
 
 MODEL_NAME = "gemini/gemini-1.5-pro"
@@ -79,11 +79,14 @@ DEPARTMENTS = {
 
 
 def create_llm() -> LLM:
-    """Create the shared Gemini model client using the environment API key."""
-    api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    """Create the shared Gemini model client using the Streamlit secret."""
+    try:
+        api_key = str(st.secrets.get("GOOGLE_API_KEY", "")).strip()
+    except StreamlitSecretNotFoundError:
+        api_key = ""
     if not api_key:
         raise ValueError(
-            "GOOGLE_API_KEY가 설정되지 않았습니다. .env 파일에 API 키를 입력해 주세요."
+            "GOOGLE_API_KEY가 설정되지 않았습니다. Streamlit Secrets에 설정해 주세요."
         )
     return LLM(model=MODEL_NAME, api_key=api_key)
 
