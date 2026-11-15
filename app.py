@@ -256,23 +256,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if not st.user.is_logged_in:
+user_info = st.user
+user_id = str(user_info.get("sub", "")).strip()
+login_state = getattr(user_info, "is_logged_in", None)
+if login_state is None:
+    login_state = bool(user_id)
+
+if not login_state or not user_id:
+    st.session_state.pop("authenticated_user_id", None)
     st.title("🕹️ 에이전트 타이쿤")
     st.info("휴대폰·태블릿 등 여러 기기에서 기록을 동기화하려면 Google 로그인이 필요합니다.")
     st.button("Google 계정으로 로그인", on_click=st.login, use_container_width=True)
     st.caption("로그인 버튼이 동작하지 않으면 배포 환경의 Streamlit 인증 설정을 확인해 주세요.")
     st.stop()
 
-user_id = str(st.user.get("sub", "")).strip()
-if not user_id:
-    st.error("로그인 계정 식별 정보를 확인할 수 없습니다. Google 로그인 설정을 확인해 주세요.")
-    st.stop()
+st.session_state["authenticated_user_id"] = user_id
+user_id = st.session_state["authenticated_user_id"]
 
 st.sidebar.markdown(
     '<div class="game-panel">🕹️ 타이쿤 컨트롤 타워<br>부서를 골라 대화를 시작하세요!</div>',
     unsafe_allow_html=True,
 )
-email = st.user.get("email", "")
+email = user_info.get("email", "")
 if email:
     st.sidebar.caption(email)
 st.sidebar.button("로그아웃", on_click=st.logout, use_container_width=True)
